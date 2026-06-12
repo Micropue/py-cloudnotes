@@ -1,0 +1,80 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log
+.storybook/
+.vite/
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+*.iml
+
+# Build output
+dist/
+build/
+coverage/
+www/
+logs/
+*.log
+*.tmp
+*.temp
+*.cache
+.cache/
+jspm_packages/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS generated files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+
+# Frontend / framework
+public/node_modules/
+.nuxt/
+.next/
+out/
+/.parcel-cache/
+.cache/
+.storybook/
+
+# Misc
+.sass-cache/
+.vscode-test/
+
+# Temporary files
+tmp/
+temp/
+
+# Generated lock files for some setups
+.pnpm-debug.log
+
+# JetBrains
+.idea/
+*.iml
+out/
+
+# Others
+npm-debug.log
