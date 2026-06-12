@@ -37,9 +37,9 @@
         <div class="panel-toolbar">
           <span class="panel-label"><i class="pi pi-pencil" style="margin-right:6px"></i>Markdown 编辑</span>
           <div class="toolbar-buttons">
-            <Button icon="pi pi-bold" severity="secondary" text rounded size="small" @click="insertMD('**','**')" v-tooltip.top="'加粗'" />
-            <Button icon="pi pi-italic" severity="secondary" text rounded size="small" @click="insertMD('*','*')" v-tooltip.top="'斜体'" />
-            <Button icon="pi pi-minus" severity="secondary" text rounded size="small" @click="insertMD('\n## ','')" v-tooltip.top="'标题'" />
+            <Button severity="secondary" text rounded size="small" @click="insertMD('**','**')" v-tooltip.top="'加粗'" style="font-weight:700;font-family:Georgia,serif;font-size:16px">B</Button>
+            <Button severity="secondary" text rounded size="small" @click="insertMD('*','*')" v-tooltip.top="'斜体'" style="font-style:italic;font-family:Georgia,serif;font-size:16px">I</Button>
+            <Button severity="secondary" text rounded size="small" @click="insertMD('\n## ','')" v-tooltip.top="'标题'" style="font-weight:700;font-size:15px">H</Button>
             <Button icon="pi pi-list" severity="secondary" text rounded size="small" @click="insertMD('\n- ','')" v-tooltip.top="'列表'" />
             <Button icon="pi pi-code" severity="secondary" text rounded size="small" @click="insertMD('`','`')" v-tooltip.top="'代码'" />
             <Button icon="pi pi-link" severity="secondary" text rounded size="small" @click="insertMD('[','](url)')" v-tooltip.top="'链接'" />
@@ -160,8 +160,8 @@ onMounted(async () => {
     editorContent.value = res.data.content || ''
   } catch { router.push('/'); return }
 
-  const { ytext } = collabWS.connect(noteId)
-  collabWS.onRemoteChange((content) => { editorContent.value = content })
+  collabWS.connect(noteId)
+  collabWS.onRemoteChange((content) => { editorContent.value = content; isSaved.value = false })
   collabWS.onAwareness((users) => {
     onlineUsers.value = users
     const cursors: RCursor[] = []

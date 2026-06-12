@@ -1,38 +1,25 @@
-import * as Y from 'yjs'
 import { useAuthStore } from '../stores/auth'
 
 type AwarenessHandler = (users: any[]) => void
+type RemoteChangeHandler = (content: string) => void
 
 class CollabWebSocket {
   private ws: WebSocket | null = null
-  private ydoc: Y.Doc | null = null
-  private ytext: Y.Text | null = null
   private currentNoteId: number = 0
   private awarenessHandlers: AwarenessHandler[] = []
+  private remoteChangeHandlers: RemoteChangeHandler[] = []
   private reconnectTimer: any = null
   private cursorInterval: any = null
-
   private cursor: { line: number; col: number } | null = null
-  private _isLocalChange = false
+  private currentContent: string = ''
 
-  connect(noteId: number): { ydoc: Y.Doc; ytext: Y.Text } {
-    // 如果已经连接同一篇文档，复用
-    if (this.currentNoteId === noteId && this.ydoc && this.ytext && this.ws?.readyState === WebSocket.OPEN) {
-      return { ydoc: this.ydoc, ytext: this.ytext }
+  connect(noteId: number): void {
+    if (this.currentNoteId === noteId && this.ws?.readyState === WebSocket.OPEN) {
+      return
     }
 
-    this.disconnect()
+    this.teardownWS()
     this.currentNoteId = noteId
-
-    this.ydoc = new Y.Doc()
-    this.ytext = this.ydoc.getText('content')
-
-    // 本地变更 → 发送到服务器
-    this.ydoc.on('update', (update: Uint8Array) => {
-      if (this._isLocalChange && this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(update)
-      }
-    })
 
     const authStore = useAuthStore()
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -41,7 +28,6 @@ class CollabWebSocket {
     const wsUrl = `${protocol}//${host}/ws/notes/${noteId}?token=${token}`
 
     this.ws = new WebSocket(wsUrl)
-    this.ws.binaryType = 'arraybuffer'
 
     this.ws.onopen = () => {
       this.ws?.send(JSON.stringify({ type: 'sync-request' }))
@@ -49,24 +35,17 @@ class CollabWebSocket {
     }
 
     this.ws.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        // 远程 Yjs 更新
-        const update = new Uint8Array(event.data)
-        this._isLocalChange = false
-        Y.applyUpdate(this.ydoc!, update)
-        this._isLocalChange = true
-      } else if (typeof event.data === 'string') {
+      if (typeof event.data === 'string') {
         try {
           const data = JSON.parse(event.data)
-          if (data.type === 'sync-response' && data.content && this.ytext) {
-            if (this.ytext.toString() === '') {
-              this.ydoc!.transact(() => {
-                this.ytext!.delete(0, this.ytext!.length)
-                this.ytext!.insert(0, data.content)
-              })
-            }
+          if (data.type === 'sync-response' && data.content !== undefined) {
+            this.currentContent = data.content
+            this.remoteChangeHandlers.forEach(h => h(data.content))
+          } else if (data.type === 'sync' && data.content !== undefined) {
+            this.currentContent = data.content
+            this.remoteChangeHandlers.forEach(h => h(data.content))
           } else if (data.type === 'awareness') {
-            this.awarenessHandlers.forEach((h) => h(data.users))
+            this.awarenessHandlers.forEach(h => h(data.users))
           }
         } catch { /* ignore */ }
       }
@@ -80,26 +59,17 @@ class CollabWebSocket {
     }
 
     this.ws.onerror = () => { this.ws?.close() }
-
-    this._isLocalChange = true
-    return { ydoc: this.ydoc, ytext: this.ytext }
   }
 
-  /** 本地编辑同步到 Yjs（由 textarea input 事件调用） */
   syncLocalChange(content: string) {
-    if (!this.ytext || !this.ydoc || !this._isLocalChange) return
-    this.ydoc.transact(() => {
-      this.ytext!.delete(0, this.ytext!.length)
-      this.ytext!.insert(0, content)
-    })
+    this.currentContent = content
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'sync', content }))
+    }
   }
 
-  /** 监听 Yjs 远程变更 */
   onRemoteChange(callback: (content: string) => void) {
-    this.ytext?.observe(() => {
-      if (this._isLocalChange) return // 跳过本地回显
-      callback(this.ytext!.toString())
-    })
+    this.remoteChangeHandlers.push(callback)
   }
 
   setCursor(line: number, col: number) {
@@ -119,8 +89,8 @@ class CollabWebSocket {
   }
 
   saveContent() {
-    if (this.ws?.readyState === WebSocket.OPEN && this.ytext) {
-      this.ws.send(JSON.stringify({ type: 'save', content: this.ytext.toString() }))
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'save', content: this.currentContent }))
     }
   }
 
@@ -130,15 +100,21 @@ class CollabWebSocket {
 
   get isConnected() { return this.ws?.readyState === WebSocket.OPEN }
 
-  disconnect() {
+  /** 仅关闭 WebSocket，保留 handlers（重连后继续使用） */
+  private teardownWS() {
     clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
     this.stopCursorSync()
-    this.awarenessHandlers = []
-    this._isLocalChange = false
     this.currentNoteId = 0
+    this.currentContent = ''
     if (this.ws) { this.ws.onclose = null; this.ws.close(); this.ws = null }
-    if (this.ydoc) { this.ydoc.destroy(); this.ydoc = null; this.ytext = null }
+  }
+
+  /** 完全断开，清空所有 handlers */
+  disconnect() {
+    this.teardownWS()
+    this.awarenessHandlers = []
+    this.remoteChangeHandlers = []
   }
 }
 

@@ -1,8 +1,10 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import exc as sa_exc
 from app.database import engine
 from app.models import Base
 from app.config import UPLOAD_DIR
@@ -12,8 +14,16 @@ from app.websocket.handler import handle_websocket
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # 数据库连接重试，解决 Docker 启动时序问题
+    for attempt in range(30):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            break
+        except sa_exc.OperationalError:
+            if attempt == 29:
+                raise
+            await asyncio.sleep(1)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     yield
     await engine.dispose()

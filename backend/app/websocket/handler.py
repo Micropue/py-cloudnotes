@@ -28,6 +28,22 @@ async def persist_document(note_id: int, content: str):
         print(f"持久化文档失败 note_id={note_id}: {e}")
 
 
+async def broadcast_text_to_room(note_id: int, message: str, exclude: WebSocket = None):
+    """广播文本消息给房间内所有用户（可选排除发送者）"""
+    if note_id not in rooms:
+        return
+    dead = []
+    for ws in rooms[note_id]:
+        if ws == exclude:
+            continue
+        try:
+            await ws.send_text(message)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        await disconnect_user(note_id, ws)
+
+
 async def broadcast_to_room(note_id: int, message: bytes, exclude: WebSocket = None):
     """广播消息给房间内所有用户（可选排除发送者）"""
     if note_id not in rooms:
@@ -114,6 +130,15 @@ async def handle_websocket(websocket: WebSocket, note_id: int, user_id: int, use
                             rooms[note_id][websocket]["cursor"] = data.get("cursor")
                         # 广播光标更新（低频率，每300ms）
                         await broadcast_awareness(note_id, exclude=websocket)
+
+                    elif msg_type == "sync":
+                        # 客户端文档内容变更 — 广播给其他客户端
+                        content = data.get("content", "")
+                        await broadcast_text_to_room(
+                            note_id,
+                            json.dumps({"type": "sync", "content": content}),
+                            exclude=websocket,
+                        )
 
                     elif msg_type == "sync-request":
                         # 客户端请求最新文档内容（从数据库加载）
